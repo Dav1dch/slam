@@ -1,6 +1,8 @@
 #include <Eigen/Dense>
 #include <iostream>
 #include <opencv2/opencv.hpp>
+#include <sophus/se3.hpp>
+#include <src/Core/Matrix.h>
 
 using namespace std;
 using namespace cv;
@@ -31,6 +33,10 @@ inline float GetPixelValue(const cv::Mat &img, float x, float y) {
                (1 - xx) * yy * data[img.step] + xx * yy * data[img.step + 1]);
 }
 
+void optimal_direct(Mat img_1, Mat img_2,
+                    vector<Eigen::Vector<double, 2>> &points,
+                    vector<Eigen::Vector2d> &target_points, Sophus::SE3d &pose);
+
 int main(int argc, char **argv) {
 
   cv::Mat left_img = cv::imread(left_file, 0);
@@ -55,5 +61,28 @@ int main(int argc, char **argv) {
         fx * baseline / disparity; // you know this is disparity to depth
     depth_ref.push_back(depth);
     pixels_ref.push_back(Eigen::Vector2d(x, y));
+  }
+}
+
+void optimal_direct(Mat img_1, Mat img_2,
+                    vector<Eigen::Vector<double, 2>> &points,
+                    vector<double> &depths,
+                    vector<Eigen::Vector2d> &target_points,
+                    Sophus::SE3d &pose) {
+  int iterations = 10;
+  int patch_size = 4;
+  double error;
+  for (int iter = 0; iter < iterations; iter++) {
+    for (int i = 0; i < points.size(); i++) {
+      Eigen::Vector3d tp =
+          pose * Eigen::Vector3d(points[i][0], points[i][1], depths[i]);
+      double x = tp[0];
+      double y = tp[1];
+      double z = tp[2];
+      double zz = z * z;
+      for (int x = -patch_size; x < patch_size; x++)
+        for (int y = -patch_size; y < patch_size; y++) {
+        }
+    }
   }
 }
