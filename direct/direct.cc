@@ -1,8 +1,8 @@
 #include <Eigen/Dense>
+#include <Eigen/src/Core/Matrix.h>
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <sophus/se3.hpp>
-#include <src/Core/Matrix.h>
 
 using namespace std;
 using namespace cv;
@@ -33,8 +33,7 @@ inline float GetPixelValue(const cv::Mat &img, float x, float y) {
                (1 - xx) * yy * data[img.step] + xx * yy * data[img.step + 1]);
 }
 
-void optimal_direct(Mat img_1, Mat img_2,
-                    vector<Eigen::Vector<double, 2>> &points,
+void optimal_direct(Mat img_1, Mat img_2, vector<Eigen::Vector2d> &points,
                     vector<Eigen::Vector2d> &target_points, Sophus::SE3d &pose);
 
 int main(int argc, char **argv) {
@@ -72,17 +71,40 @@ void optimal_direct(Mat img_1, Mat img_2,
   int iterations = 10;
   int patch_size = 4;
   double error;
-  for (int iter = 0; iter < iterations; iter++) {
-    for (int i = 0; i < points.size(); i++) {
+  for (int i = 0; i < points.size(); i++) {
+    for (int iter = 0; iter < iterations; iter++) {
+      Eigen::Matrix<double, 6, 6> H;
+      Eigen::Vector<double, 6> g;
       Eigen::Vector3d tp =
           pose * Eigen::Vector3d(points[i][0], points[i][1], depths[i]);
-      double x = tp[0];
-      double y = tp[1];
-      double z = tp[2];
-      double zz = z * z;
+      double X = tp[0];
+      double Y = tp[1];
+      double Z = tp[2];
+      double ZZ = Z * Z;
       for (int x = -patch_size; x < patch_size; x++)
         for (int y = -patch_size; y < patch_size; y++) {
+          Eigen::Vector<double, 6> J;
+          double kpx = fx * X / Z + cx;
+          double kpy = fy * Y / Z + cy;
+          error = GetPixelValue(img_1, points[i][0] + x, points[i][1] + y) -
+                  GetPixelValue(img_2, kpx + x, kpy + y);
+          Eigen::Vector2d j_pixel;
+          Eigen::Matrix<double, 2, 6> j_se;
+          j_pixel = -0.5 * Eigen::Vector<double, 2>(
+                               GetPixelValue(img_2, kpx + x + 1, kpy + y) -
+                                   GetPixelValue(img_2, kpx + x - 1, kpy + y),
+                               GetPixelValue(img_2, kpx + x, kpy + y + 1) -
+                                   GetPixelValue(img_2, kpx + x, kpy + y - 1));
+          j_se << fx / Z, 0, -fx * X / ZZ, fx * X * Y / ZZ,
+              fx + fx * X * X / ZZ, -fx * Y / Z, 0, fy / Z, -fy * Y / ZZ,
+              -fy - fy * Y * Y, -fy * X * Y / ZZ, fy * X / Z;
+          H += J * J.transpose();
+          g += -J * error;
         }
+      Eigen::Vector<double, 6> delta;
+      delta = H.ldlt().solve(g);
+      pose = Sophus::SE3d::exp(delta) * pose;
     }
+    cout << pose.matrix() << endl;
   }
 }
